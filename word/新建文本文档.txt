@@ -1,0 +1,10 @@
+<div data-v-f9624136="" data-v-39573478="" class="card padding-default"><div data-v-39573478="" data-v-f9624136="" class="content-card-top"><div data-v-39573478="" data-v-f9624136="" class="author"><div data-v-39573478="" data-v-f9624136="" class="lfe-caption author-margin"><span data-v-39573478="" data-v-f9624136="">作者: <span data-v-5b9e5f50="" data-v-39573478="" data-v-f9624136=""><span data-v-1f03983a="" data-v-5b9e5f50=""><span data-v-1f03983a=""><a data-v-0640126c="" data-v-5b9e5f50="" href="/user/1240580" target="_blank" colorscheme="none" class="color-none" data-v-1f03983a=""><span data-v-5b9e5f50="" style="font-weight: bold; color: rgb(82, 196, 26);" data-v-0640126c="">
+  sunny_town
+</span></a></span> </span> <!----> <!----></span></span> <span data-v-71731098="" data-v-39573478="" class="lfe-caption" style="color: rgb(255, 255, 255); background: rgb(231, 76, 60);" data-v-f9624136="">公开</span></div> <div data-v-39573478="" data-v-f9624136="" class="lfe-caption"><span data-v-39573478="" data-v-f9624136="">发表时间: <time data-v-39573478="" data-v-f9624136="">2024-04-27 20:10</time></span></div></div> <div data-v-39573478="" data-v-f9624136="" class="actions"><button data-v-7ade990c="" data-v-39573478="" type="button" class="btn-delete lfe-form-sz-small" style="border-color: rgb(231, 76, 60); background-color: rgb(231, 76, 60);" data-v-f9624136="">删除
+          </button> <button data-v-7ade990c="" data-v-39573478="" type="button" class="lfe-form-sz-small" style="border-color: rgb(52, 152, 219); background-color: rgb(52, 152, 219);" data-v-f9624136="">编辑</button></div></div> <hr data-v-39573478="" data-v-f9624136="" class="horizon"> <div data-v-e5ad98f0="" data-v-39573478="" class="marked" data-v-f9624136=""><h1>此网站，运行中。</h1>
+<p>运行者：sunny_town</p>
+<p><a href="https://www.luogu.com.cn/user/1240580">这是他的洛谷个人中心</a></p>
+<p><a href="https://github.com/sunny-town-kuaizz">这是他的github个人中心</a></p>
+<p><a href="https://gitee.com/sunny-town">这是他的gitee个人中心</a></p>
+<h1>建博客不易，给他一个关注吧！</h1>
+</div></div>
