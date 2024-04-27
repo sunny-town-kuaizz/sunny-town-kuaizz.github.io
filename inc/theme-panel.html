@@ -1,0 +1,515 @@
+<?php
+/**
+ * 主题后台选项面板
+ */
+if(!defined('THEME_NAME')) die('非法访问 - Insufficient Permissions');
+
+// 后台增加主题选项入口
+function mk_add_theme_options_page() {
+    global $theme_options;
+    if (isset($_GET['page']) && isset($_REQUEST['action']) && ($_GET['page'] == basename(__FILE__))) {
+        if ('update' == $_REQUEST['action'])       // 保存信息
+        {
+            foreach($theme_options as $value) {
+                if(!isset($value['id'])) continue;
+                if (isset($_REQUEST[$value['id']])) {
+                    update_option(THEME_SLUG.'_'.$value['id'], $_REQUEST[$value['id']]);
+                } else {
+                    delete_option(THEME_SLUG.'_'.$value['id']);
+                }
+            }
+            update_option(THEME_SLUG.'_options_setup', true);
+            header('Location: themes.php?page=theme-panel.php&update=true');
+            die;
+        } 
+        else if('reset' == $_REQUEST['action'])    // 恢复默认
+        {
+            foreach ($theme_options as $value) {
+                delete_option(THEME_SLUG.'_'.$value['id']);
+            }
+            delete_option(THEME_SLUG.'_options_setup');   // 删除主题初始化标志
+            header('Location: themes.php?page=theme-panel.php&reset=true');
+            die;
+        }
+    }
+    add_theme_page('主题选项', '主题选项', 'edit_theme_options', basename(__FILE__), 'mk_options_page');
+}
+add_action('admin_menu', 'mk_add_theme_options_page');
+
+// 主题选项页面
+function mk_options_page() {
+    global $theme_options;
+    if (isset($_REQUEST['update'])) echo '<div class="updated"><p><strong>'.THEME_NAME.'主题设置已保存！</strong></p></div>';
+    if (isset($_REQUEST['reset']))  echo '<div class="updated"><p><strong>'.THEME_NAME.'主题设置已重置。</strong></p></div>';
+    ?>
+<div class="wrap mk-theme-option-panel">
+    <h2 style="margin-left: 10px;">
+        <?php echo THEME_NAME; ?> 主题选项 
+        <a href="https://mkblog.cn/blog/help/theme-mkblog/" target="_blank" class="dashicons dashicons-editor-help" title="使用帮助"></a>
+    </h2>
+    
+    <input placeholder="搜索主题选项…" type="search" id="theme-options-search" />
+    
+    <form method="post">
+        <h2 class="nav-tab-wrapper">
+        <?php
+        $panelIndex = 0;
+        foreach ($theme_options as $value ) {
+            if ( $value['type'] == 'panelstart' ) echo '<a href="#' . $value['id'] . '" class="nav-tab' . ( $panelIndex == 0 ? ' nav-tab-active' : '' ) . '">' . $value['title'] . '</a>';
+            $panelIndex++;
+        }
+        echo '<a href="#about_theme" class="nav-tab">关于主题</a>';
+        ?>
+        </h2>
+
+<?php
+$panelIndex = 0;
+foreach ($theme_options as $value) {
+switch ( $value['type'] ) {
+    case 'panelstart':      // 选项开始
+        echo '<div class="panel" id="' . $value['id'] . '" ' . ( $panelIndex == 0 ? ' style="display:block"' : '' ) . '><table class="form-table">';
+        $panelIndex++;
+    break;
+    
+    case 'panelend':        // 选项结束
+        echo '</table></div>';
+    break;
+    
+    case 'subtitle':        // 选项中的小标题
+        echo '<tr><th colspan="2"><h3>' . $value['title'] . '</h3></th></tr>';
+    break;
+    
+    case 'diy':             // 自定义内容
+?>
+<tr>
+    <th><?php echo $value['name']; ?></th>
+    <td><?php echo $value['html']; ?></td>
+</tr>
+<?php
+    break;
+    
+    case 'number':          // 数字输入框
+    case 'text':            // 文本输入框
+    case 'password':        // 密码输入框
+    case 'email':           // 邮箱输入框
+    case 'url':             // 链接输入框
+        $class = ($value['type'] == 'number')? 'small-text': 'regular-text';
+?>
+<tr>
+    <th><label for="<?php echo $value['id']; ?>"><?php echo $value['name']; ?></label></th>
+    <td>
+        <label>
+            <input name="<?php echo $value['id']; ?>" class="<?php echo $class; ?>" 
+              id="<?php echo $value['id']; ?>" type="<?php echo $value['type']; ?>" 
+              value="<?php echo htmlspecialchars(mk_theme_option($value['id'], $value['std'])); ?>" /> &nbsp;
+            <span class="description"><?php echo $value['desc']; ?></span>
+        </label>
+    </td>
+</tr>
+<?php
+    break;
+    
+    case 'textarea':     // 文本域
+?>
+<tr>
+    <th><?php echo $value['name']; ?></th>
+    <td>
+        <p><label for="<?php echo $value['id']; ?>"><?php echo $value['desc']; ?></label></p>
+        <p><textarea name="<?php echo $value['id']; ?>" id="<?php echo $value['id']; ?>" rows="5" cols="50" 
+         class="large-text code"><?php echo htmlspecialchars(stripslashes(mk_theme_option($value['id'], $value['std']))); ?></textarea></p>
+    </td>
+</tr>
+<?php
+    break;
+    
+    case 'bookmarks-select':  // 链接分类选择器
+        $categorys = mk_get_link_category();
+        foreach ($categorys as $category) {
+            $value['options'][strval($category->term_id)] = $category->name;
+        }
+        
+    case 'select':     // 下拉框
+        $default = mk_theme_option($value['id'], $value['std']);
+?>
+<tr>
+    <th><label for="<?php echo $value['id']; ?>"><?php echo $value['name']; ?></label></th>
+    <td>
+        <label>
+            <select name="<?php echo $value['id']; ?>" id="<?php echo $value['id']; ?>">
+                <?php foreach ($value['options'] as $key => $val) : ?>
+                <option value="<?php echo $key; ?>" <?php echo (($default == $key)? 'selected="selected"': ''); ?>>
+                    <?php echo $val; ?>
+                </option>
+                <?php endforeach; ?>
+            </select> &nbsp; 
+            <span class="description"><?php echo $value['desc']; ?></span>
+        </label>
+    </td>
+</tr>
+
+<?php
+    break;
+    
+    case 'radio':     // 单选框(TBD)
+?>
+<tr>
+    <th><label for="<?php echo $value['id']; ?>"><?php echo $value['name']; ?></label></th>
+    <td>
+        <?php foreach ($value['options'] as $name => $option) : ?>
+        <label>
+            <input type="radio" name="<?php echo $value['id']; ?>" id="<?php echo $value['id']; ?>" 
+             value="<?php echo $option; ?>" <?php checked( get_option( $value['id'] ), $option); ?>>
+            <?php echo $name; ?>
+        </label>
+        <?php endforeach; ?>
+        <p><span class="description"><?php echo $value['desc']; ?></span></p>
+    </td>
+</tr>
+
+<?php
+    break;
+    case 'checkbox':     // 多选框
+?>
+<tr>
+    <th><?php echo $value['name']; ?></th>
+    <td>
+        <label>
+            <input type='checkbox' name="<?php echo $value['id']; ?>" id="<?php echo $value['id']; ?>" 
+              value="1" <?php echo (mk_theme_option( $value['id'], $value['std'] )? 'checked="checked"': ''); ?> />
+            <span><?php echo $value['desc']; ?></span>
+        </label>
+    </td>
+</tr>
+
+<?php
+    break;
+    case 'checkboxs':     // 多选框 组 (TBD)
+?>
+<tr>
+    <th><?php echo $value['name']; ?></th>
+    <td>
+        <?php $checkboxsValue = get_option($value['id']);
+        if(!is_array($checkboxsValue)) $checkboxsValue = array();
+        foreach($value['options'] as $id => $title) : ?>
+        <label>
+            <input type="checkbox" name="<?php echo $value['id']; ?>[]" id="<?php echo $value['id']; ?>[]" value="<?php echo $id; ?>" <?php checked(in_array($id, $checkboxsValue), true); ?>>
+            <?php echo $title; ?>
+        </label>
+        <?php endforeach; ?>
+        <span class="description"><?php echo $value['desc']; ?></span>
+    </td>
+</tr>
+ 
+<?php
+    break;
+}    // switch
+}    // foreach
+?>
+<div class="panel" id="about_theme">
+    <h3>特别说明</h3>
+    <p>本主题在设计上参照了 
+        <a href="https://www.linpx.com/" target="_blank">Pinghsu</a>、
+        <a href="http://ztmao.com/bokezhuti/2727.html" target="_blank">Lover</a>、
+        <a href="https://get233.com/archives/mirages-intro.html" target="_blank">Mirages</a>、
+        <a href="https://biji.io/2017/4905.html" target="_blank">Adams</a>、
+        <a href="https://smohan.net/blog/" target="_blank">smohan</a>、
+        <a href="https://themebetter.com/theme/tob" target="_blank">tob</a>、
+        <a href="https://yigujin.cn/nana/" target="_blank">Nana</a> 等优秀主题
+    </p>
+    <p>主题中使用了  
+        <a href="https://github.com/eshengsky/jQuery-emoji" target="_blank">jQuery-emoji</a>、
+        <a href="https://fancyapps.com/fancybox/3/" target="_blank">fancyBox3</a>、
+        <a href="http://wicky.nillia.ms/headroom.js/" target="_blank">Headroom</a>、
+        <a href="https://github.com/timdream/wordcloud2.js" target="_blank">wordcloud2</a> 等第三方插件
+    </p>
+    
+    <h3>关于主题</h3>
+    <p>或许是最简洁好用的 WordPress 个人博客主题。</p>
+    <p>&copy; 孟坤博客 · 走心出品</p>
+
+    <p>请注意：本主题非免费主题，请先付费购买再使用！自助购买地址：<a href="https://mkblog.cn/theme-mkblog/">https://mkblog.cn/theme-mkblog/</a></p>
+    
+    <a class="button-primary" href="#" onclick="alert('讨论群仅限付费用户加入。请在主题购买回执邮件中查看加群方法！');return false;">
+        加入讨论群
+    </a>
+    <a class="button-primary" href="https://mkblog.cn/blog/help/theme-mkblog/" target="_blank">帮助文档</a>
+    <a class="button-primary" href="https://docs.qq.com/form/fill/DQ1lCQWtzekJPRklw" target="_blank">意见反馈</a>
+    
+    <h3>额外赞助</h3>
+    <p><a href="https://mkblog.cn/blog/donate/" target="_blank">点击查看赞助记录</a></p>
+    <img src="data:image/jpeg;base64,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" title="支付宝、微信、手机QQ扫码打赏">
+    
+    <h3>附录一：网站链接分类-ID对应表</h3>
+    <p>如需增加友链分类，请前往 链接 > 添加分类目录</p>
+    <p>链接展示时默认按照添加时间排序。如果需要随机排序，可以在短代码中加入 <code>orderby="rand"</code> 参数</p>
+    <table class="mk-table" style="width: 100%; max-width: 500px; margin-top: 12px">
+        <thead><tr><th>链接分类</th><th>分类ID</th><th>调用代码</th></tr></thead>
+        <?php 
+        $categorys = mk_get_link_category();
+        foreach ($categorys as $category) {
+            echo '<tr><td>' . $category->name . '</td><td>' . $category->term_id . '</td><td>[linklist catid="' . $category->term_id . '"]</td></tr>';
+        }
+        ?>
+    </table>
+    
+    <h3>附录二：WordPress上帝模式</h3>
+    <p style="color: #a0a0a0">在上帝模式设置界面中，你可以看到 WordPress 的所有配置，包括在用插件和已卸载的历史插件的所有设置项。
+    <span style="color: red;">贸然修改里面的内容可能会导致网站故障，小白慎用！</span></p>
+    <a class="button" href="options.php" target="_blank">进入上帝模式</a>
+    
+</div>
+
+<p class="submit">
+    <input name="submit" type="submit" class="button button-primary" value="保存更改"/>
+    <input type="hidden" name="action" value="update" />
+</p>
+</form>
+
+<form method="post">
+<p>
+    <input name="reset" type="submit" class="button button-secondary" value="重置主题" 
+     onclick="return confirm('重置后将清除本主题所有的设置项！是否重置？');"/>
+    <input type="hidden" name="action" value="reset" />
+</p>
+</form>
+</div>
+
+<style>
+.panel{display:none}
+.panel h3{margin:0;font-size:1.2em}
+#panel_update ul{list-style-type:disc}
+.nav-tab-wrapper{clear:both}
+.nav-tab{position:relative}
+.nav-tab:focus {box-shadow:none;}
+.nav-tab i:before{position:absolute;top:-10px;right:-8px;display:inline-block;padding:2px;border-radius:50%;background:#e14d43;color:#fff;content:"\f463";vertical-align:text-bottom;font:400 18px/1 dashicons;speak:none}
+#theme-options-search{display:none;float:right;margin-top:-34px;width:280px;font-weight:300;font-size:16px;line-height:1.5}
+.updated+#theme-options-search{margin-top:-91px}
+.wrap.searching .nav-tab-wrapper a,.wrap.searching .panel tr,#attrselector{display:none}
+.wrap.searching .panel{display:block !important}
+#attrselector[attrselector*=ok]{display:block}
+.mk-table{border-collapse:collapse;border-spacing:0;margin-bottom:20px}
+.mk-table thead{background:#eee}
+.mk-table th,.mk-table td{padding:.5em;border:1px solid #ddd;line-height:1.5}
+#wpcontent{background:#fff}
+#theme-options-search{font-size:1em}
+.mk-theme-option-panel .notice,.mk-theme-option-panel  div.error,.mk-theme-option-panel  div.updated{box-shadow:0 0 5px 0 rgba(0,0,0,0.38);margin:10px 0}
+.mk-theme-option-panel h2.nav-tab-wrapper{border-bottom:2px solid #eee}
+.mk-theme-option-panel .nav-tab{background:#fff;border:none;padding:10px 18px;margin-bottom:1px;margin-left:0;border-bottom: 3px solid transparent;}
+.mk-theme-option-panel .nav-tab:active,.mk-theme-option-panel .nav-tab:focus{background:#eee;outline:0}
+.mk-theme-option-panel .nav-tab.nav-tab-active{border-bottom-color: rgb(66,133,244);margin-bottom:-2px}
+.mk-theme-option-panel input,.mk-theme-option-panel select,.mk-theme-option-panel textarea{min-height: 33px;border:1px solid #e8e8e8;box-shadow:none;background-color:whitesmoke;border-radius:3px;font-family:microsoft yahei}
+.mk-theme-option-panel input[type="checkbox"]{background:#f5f5f5;border-color:#dadada;min-height: auto;}
+.mk-theme-option-panel select{}
+.mk-theme-option-panel input:focus,.mk-theme-option-panel select:focus,.mk-theme-option-panel textarea:focus{border-color:#4285f4;box-shadow:0 0 10px #4285f4}
+.mk-theme-option-panel label>span{user-select:none}
+.mk-theme-option-panel h3{font-size:1.3em;font-weight:400}
+.mk-theme-option-panel th{font-weight:400}
+.mk-theme-option-panel td{color:rgba(0,0,0,0.54)}
+#about_theme h3{padding:25px 0 5px}
+.adposition{text-decoration:none}
+@media screen and (max-width: 600px) {#theme-options-search {float: left;margin-top: 20px;width: 100%;}.mk-theme-option-panel>h2 {margin-left: 0!important;}}
+</style>
+<style id="theme-options-filter"></style>
+<div id="attrselector" attrselector="ok"></div>
+<script>
+jQuery(function ($) {
+    $(".nav-tab").click(function () {
+        $(this).addClass("nav-tab-active").siblings().removeClass("nav-tab-active");
+        $(".panel").hide();
+        $($(this).attr("href")).show();
+        return false;
+    });
+    
+    /* 定时隐藏提示 */
+    setTimeout(function() {
+        $(".mk-theme-option-panel div.updated").fadeOut(function() {
+            $(".mk-theme-option-panel div.updated").remove();
+        });
+    }, 3000);
+    
+    /* 发送测试邮件 */
+    $("#mk-mail-send-test").click(function() {
+        var oldTitle = $(this).html();
+        $(this).html('发送中...')
+        $(this).attr("disabled", true);
+        $.get(ajaxurl + '?action=mail_test', function(html) {
+            alert(html); 
+            $("#mk-mail-send-test").removeAttr("disabled");
+            $("#mk-mail-send-test").html(oldTitle);
+        });
+        return false;
+    });
+    
+    var themeOptionsFilter = $("#theme-options-filter");
+    themeOptionsFilter.text("ok");
+    if ($("#attrselector").is(":visible") && themeOptionsFilter.text() != "") {
+        $(".panel tr").each(function (el) {
+            $(this).attr("data-searchtext", $(this).text().replace(/\r|\n/g, '').replace(/ +/g, ' ').toLowerCase());
+        });
+
+        var wrap = $(".wrap");
+        $("#theme-options-search").show().on("input propertychange", function () {
+            var text = $(this).val().replace(/^ +| +$/, "").toLowerCase();
+            if (text != "") {
+                wrap.addClass("searching");
+                themeOptionsFilter.text(".wrap.searching .panel tr[data-searchtext*='" + text + "']{display:block}");
+            } else {
+                wrap.removeClass("searching");
+                themeOptionsFilter.text("");
+            };
+        });
+    };
+});
+</script>
+
+    <?php
+}   // mk_options_page
+
+
+// 启用主题后自动跳转至选项页面
+global $pagenow;
+if ( is_admin() && isset( $_GET['activated'] ) && $pagenow == 'themes.php' ) {
+    wp_redirect( admin_url( 'themes.php?page=theme-panel.php' ) );
+    exit;
+}
+
+
+// 显示主题安装成功欢迎语
+function mk_enqueue_pointer_script_style( $hook_suffix ) {
+    $dismissed_pointers = explode( ',', get_user_meta( get_current_user_id(), 'dismissed_wp_pointers', true ) );
+    
+    if( !in_array( strtolower(THEME_SLUG).'_options_pointer', $dismissed_pointers ) ) {
+        add_action( 'admin_print_footer_scripts', 'mk_pointer_print_scripts' );
+        
+        wp_enqueue_style( 'wp-pointer' );
+        wp_enqueue_script( 'wp-pointer' );
+    }
+}
+add_action( 'admin_enqueue_scripts', 'mk_enqueue_pointer_script_style' );
+
+
+function mk_pointer_print_scripts() {
+    ?>
+    <script>
+    jQuery(document).ready(function($) {
+        var $menuAppearance = $("#menu-appearance");
+        $menuAppearance.pointer({
+            content: '<h3>恭喜，<?php echo THEME_NAME; ?> 主题安装成功！</h3><p>这个主题炒鸡强大！你可以在 <a href="themes.php?page=theme-panel.php">外观&gt;主题选项</a> 中对该主题进行一些自定义配置~<br>快来试试吧！</p>',
+            position: {
+                edge: "left",
+                align: "center"
+            },
+            close: function() {
+                $.post(ajaxurl, {
+                    pointer: "<?php echo strtolower(THEME_SLUG); ?>_options_pointer",
+                    action: "dismiss-wp-pointer"
+                });
+            }
+        }).pointer("open").pointer("widget").find("a").eq(0).click(function() {
+            var href = $(this).attr("href");
+            $menuAppearance.pointer("close");
+            setTimeout(function(){
+                location.href = href;
+            }, 700);
+            return false;
+        });
+        
+        // $(window).on("resize scroll", function() {
+        //     $menuAppearance.pointer("reposition");
+        // });
+        // $("#collapse-menu").click(function() {
+        //     $menuAppearance.pointer("reposition");
+        // });
+    });
+    </script>
+<?php
+}
+
+
+// 获取主题选项
+function mk_theme_option($key, $default = '', $echo = false) {
+    global $theme_options;
+    $result = get_option(THEME_SLUG . '_' . $key);
+    if (THEME_READY || $result) { 
+        // 获取到了保存的信息
+    } else { 
+        if($default) {  // 默认值优先
+            $result = $default;
+        } else {
+            foreach($theme_options as $value) {
+                if(isset($value['id']) && ($value['id'] == $key)) {
+                    $result = $value['std'];
+                    // 保存记录
+                    update_option(THEME_SLUG . '_' . $key, $result);
+                    break;
+                }
+            }
+        }
+    }
+    return $result;
+}
+
+
+// 获取所有的链接分类（mkBlog主题原创功能）
+function mk_get_link_category() {
+    $link_categorys = array();
+    if(!$link_categorys = wp_cache_get('link_category', 'mk_link_category')) {
+        global $wpdb;
+        $request = "SELECT $wpdb->terms.term_id, name FROM $wpdb->terms ";
+        $request.= " LEFT JOIN $wpdb->term_taxonomy ON $wpdb->term_taxonomy.term_id = $wpdb->terms.term_id ";
+        $request.= " WHERE $wpdb->term_taxonomy.taxonomy = 'link_category' ";
+        $request.= " ORDER BY term_id asc";
+        $link_categorys = $wpdb->get_results($request);
+        wp_cache_add('link_category', $link_categorys, 'mk_link_category');
+    }
+    return $link_categorys;
+}
+
+
+/**
+ * 自定义主题个性化选项
+ * 参考资料:
+ * http://www.2zzt.com/jcandcj/8359.html
+ * http://www.solagirl.net/wordpress-theme-customizer-notes-1.html
+ * https://codex.wordpress.org/Class_Reference/WP_Customize_Manager/add_section
+ */ 
+function mk_theme_customize_register( $wp_customize ) {
+    $wp_customize->add_section( 'mk_theme_customize', array(
+        'title'     => '打赏设置',
+        'priority'  => 100
+    ) );
+    $wp_customize->add_setting( 'mk_site_logo', array(
+        'default'   => '',
+        'transport' => 'refresh',
+        'type'      => 'theme_mod'
+    ) );
+    $wp_customize->add_setting( 'mk_theme_color', array(
+        'default'   => '#eb5055',
+        'transport' => 'postMessage',
+        'type'      => 'theme_mod'
+    ) );
+    $wp_customize->add_setting( 'mk_pay_qrcode', array(
+        'default'   => '',
+        'transport' => 'refresh',
+        'type'      => 'theme_mod'
+    ) );
+    
+    $wp_customize->add_control( new WP_Customize_Color_Control( $wp_customize, 'mk_theme_color', array(
+        'label'     => '主题颜色',
+        'section'   => 'colors'
+    ) ) 
+    );
+    
+    $wp_customize->add_control( new WP_Customize_Image_Control( $wp_customize, 'mk_site_logo', array(
+        'label'     => '站点logo',
+        'description' => '设置网站顶部 LOGO，最佳尺寸：165x45px（不设置则显示纯文字站名）',
+        'section'   => 'title_tagline',
+        'priority'  => 300
+    ) ) );
+    $wp_customize->add_control( new WP_Customize_Image_Control( $wp_customize, 'mk_pay_qrcode', array(
+        'label'     => '打赏二维码',
+        'description' => '设置文章底部打赏二维码图片，最佳尺寸：130x130px（不设置则不显示打赏按钮）',
+        'section'   => 'mk_theme_customize'
+    ) ) );
+}
+add_action( 'customize_register', 'mk_theme_customize_register' );

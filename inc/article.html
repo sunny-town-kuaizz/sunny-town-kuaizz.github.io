@@ -1,0 +1,84 @@
+<?php get_header();?>
+
+<?php while ( have_posts() ) : the_post(); ?>
+
+<article id="post-<?php the_ID(); ?>" <?php post_class('width-short'); ?> itemscope itemtype="http://schema.org/Article">
+
+    <?php get_template_part( 'inc/article-head' ); ?>
+    
+    <!-- 文章摘要 -->
+	<?php if ( has_excerpt() ) { ?>
+	<span class="abstract"><strong>摘要：</strong><?php the_excerpt() ?></span>
+	<?php } ?>
+	
+	<!-- 正文 -->
+	<div class="entry-content" itemprop="articleBody">
+		<div class="single-content">
+            <!-- 文章内容 -->
+			<?php 
+			$article_head_ad = mk_theme_option('article_head_ad');
+			$article_foot_ad = mk_theme_option('article_foot_ad');
+			
+			// 文章顶部广告
+			if($article_head_ad) echo stripslashes($article_head_ad) . '<div class="clear-fix"></div>';
+			
+			// 正文内容
+			the_content(); 
+			
+			// 文章底部广告
+			if($article_foot_ad) echo '<div class="clear-fix"></div>' . stripslashes($article_foot_ad);
+			?>
+		</div>
+		
+        <div class="content-extras clear-fix">
+            <!-- 版权信息 -->
+            <p class="single-copyright">
+                本文作者为<a href="<?php echo $articleUrl; ?>" rel="nofollow" target="_blank"><?php echo $articleAuth; ?></a>，转载请注明。
+            </p>
+            
+            <!-- 文章标签 -->
+            <p class="single-tags">
+                <?php the_tags('<i class="fa fa-tag" aria-hidden="true"></i>', ' <i class="fa fa-tag" aria-hidden="true"></i>', ''); ?>
+            </p>
+        </div>  <!-- content-extras -->
+        
+	</div><!-- .entry-content -->
+	
+	<!-- 点赞、分享、打赏组件 -->
+    <?php get_template_part( 'inc/social' ); ?>
+	
+</article><!-- #post -->
+
+<?php comments_template( '', true ); ?>			
+
+<?php wp_reset_query(); endwhile; ?>
+
+<?php 
+$article_share = mk_theme_option('article_share');
+if($article_share && $article_share != 'hide'): ?>
+<div id="article-share"<?php if($article_share == 'auto_hide') echo ' class="headroom anim-trans"'; ?>>
+    分享
+    <div class="share-item" data-site="weixin" title="分享到微信">
+        <i class="fa fa-weixin"></i>
+        微信
+    </div>
+    <div class="share-item" data-site="weibo" title="分享到新浪微博">
+        <i class="fa fa-weibo"></i>
+        微博
+    </div>
+    <div class="share-item" data-site="qq" title="分享给QQ好友">
+        <i class="fa fa-qq"></i>
+        QQ
+    </div>
+</div>
+<?php 
+endif;
+
+$article_menu = mk_theme_option('article_menu');
+if($article_menu && $article_menu != 'hide'): 
+?>
+<div id="article-menu" <?php if($article_menu == 'auto_hide') echo 'class="auto-hide"'; ?> data-autoMenu></div>
+<?php 
+endif; 
+get_footer(); 
+?>

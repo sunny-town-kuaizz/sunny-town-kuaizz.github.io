@@ -1,0 +1,49 @@
+<?php
+error_reporting(0);
+// 缩略缩图裁剪相关功能配置
+
+// 获取随机图片
+$img_array = glob('../static/images/cover/*.{gif,jpg,png,jpeg,webp,bmp}', GLOB_BRACE);
+$offset    = array_rand($img_array);
+$img       = $img_array[$offset];
+$debug     = isset($_GET['debug'])? true: false;     // 加参数“debug”可现实错误信息，方便调试
+
+// 一些功能开关
+define ('NOT_FOUND_IMAGE',          $img);           // 裁剪图片出现 404 时显示的图片
+if(!$debug) define ('ERROR_IMAGE',  $img);           // 有错误时显示的图片
+define ('DISPLAY_ERROR_MESSAGES',   true);           // 如果出错，是否显示错误信息
+
+define ('ALLOW_EXTERNAL',           true);           // 是否允许加载外站图片（仅白名单）
+define ('ALLOW_ALL_EXTERNAL_SITES', false);          // 是否允许从【所有】第三方站点获取图像
+
+define ('BLOCK_EXTERNAL_LEECHERS',  false);          // 是否启用防盗链功能（这里将防盗链关闭，不关闭的话分享中无法显示图片）
+
+define ('FILE_CACHE_DIRECTORY',     '../cache/cover');  // 缩略图裁剪缓存目录
+
+// 白名单网站列表
+$ALLOWED_SITES = array(
+    'flickr.com',
+    'staticflickr.com',
+    'picasa.com',
+    'img.youtube.com',
+    'upload.wikimedia.org',
+    'photobucket.com',
+    'imgur.com',
+    'imageshack.us',
+    'tinypic.com',
+    'baidu.com',         // 百度图片
+    'sinaimg.cn',        // 微博图床
+    'sohucs.com',        // 搜狐图床
+    'qhimg.com',         // 360图床
+    'bvimg.com',         // 贴图库
+    'loli.net',          // https://sm.ms/
+    'upload.cc',         // https://upload.cc/
+    'chuantu.biz',       // http://chuantu.biz/
+    'ik87.cn',           // https://www.17uw.cn/
+    'ooxx.ooo',          // https://ooxx.ooo/
+    'fastmirror.org',    // https://moetu.org/
+    'aliyuncs.com',      // 阿里云oss
+    
+    // **** 可以在这里将你自己的图片网址加入白名单 ****
+    
+);

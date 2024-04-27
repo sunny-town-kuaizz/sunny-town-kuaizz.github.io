@@ -1,0 +1,791 @@
+<?php
+
+/**
+ * mkBlog 主题函数
+ */
+if(!defined('THEME_NAME')) die('非法访问 - Insufficient Permissions');
+
+// 加载前端脚本及样式
+function mk_theme_scripts() {
+    // Jquery
+    wp_enqueue_script( 'jquery', MK_THEME_STATIC_URL . '/js/jquery.min.js', array(), THEME_VERSION, false );
+    
+    // 图标字体	
+    wp_enqueue_style( 'font-awesome', MK_THEME_STATIC_URL . '/fonts/font-awesome.min.css', array(), THEME_VERSION, 'all');
+    
+    // 灯箱
+    wp_enqueue_style( 'fancybox', MK_THEME_STATIC_URL . '/css/jquery.fancybox.min.css', array(), THEME_VERSION, 'all');
+    wp_enqueue_script( 'jquery.fancybox', MK_THEME_STATIC_URL . '/js/jquery.fancybox.min.js', array(), THEME_VERSION, false);
+    
+    // 代码高亮
+    wp_enqueue_script( 'prettify', MK_THEME_STATIC_URL . '/js/prettify.js', array(), THEME_VERSION, false);
+
+    // 主题核心脚本文件
+    wp_enqueue_script('script', MK_THEME_STATIC_URL . '/js/script.min.js', array(), THEME_VERSION, false);
+    
+    // CSS 样式表
+    wp_enqueue_style('main-style', MK_THEME_STATIC_URL . '/css/style.css', array(), THEME_VERSION, 'all');
+
+    // 网站 API 设定
+    wp_localize_script('script', 'mk_theme_api', array(
+        'is_wap'         => wp_is_mobile(),  // 是否是手机浏览
+        'get_qq_info'    => (bool) mk_theme_option('get_qq_info'),    // 是否启用 QQ 信息获取
+        'can_upload_pic' => (bool) mk_theme_option('smms_token'),     // 是否可上传图片
+        'code_highlight' => (bool) mk_theme_option('code_highlight'), // 是否启用主题自带的代码高亮
+        'ajax_url'   => admin_url() . 'admin-ajax.php',   // 评论 AJAX 路径
+        'home_url'   => home_url(),                       // 网站首页路径
+        'theme_url'  => get_template_directory_uri(),     // 主题路径
+        'static_url' => MK_THEME_STATIC_URL               // 静态资源路径
+    ));
+}
+add_action('wp_enqueue_scripts', 'mk_theme_scripts');
+
+
+// WordPress 登录界面美化
+function mk_login_style() {
+    echo '<link rel="stylesheet" id="wp-admin-css" href="' . MK_THEME_STATIC_URL . '/css/admin-style.css" type="text/css" />';
+    if(get_theme_mod('mk_site_logo')) {
+        echo '<style>.login h1 a {background-image: url('.get_theme_mod('mk_site_logo').');}</style>';
+    }
+}
+add_action('login_head', 'mk_login_style');
+
+
+// 自定义菜单
+register_nav_menus(
+    array(
+        'main-menu'   => '顶部主导航菜单',
+        //'mobile-menu' => '移动端侧滑菜单'
+    )
+);
+
+
+// 导航菜单未设置回调函数
+function not_set_menu_fallback($args) {
+	$menus = array(
+		array(
+			'url'     => home_url(),
+			'name'    => '首页',
+			'current' => is_home()
+		),
+		array(
+			'url'    => admin_url( 'nav-menus.php?action=locations' ),
+			'name'   => '<i class="fa fa-bookmark" aria-hidden="true"></i> 添加菜单'
+		)
+	);
+    
+	$code = '<ul id="' . esc_attr( $args['theme_location'] ) . '" data-no-instant>';
+	foreach ( $menus as $menu ) {
+		$current_clsss = isset( $menu['current'] ) && $menu['current'] ? 'current-menu-item"' : '';
+		$code .= sprintf( '<li class="%s"><a href="%s">%s</a></li>', $current_clsss, esc_url( $menu['url'] ), $menu['name'] );
+	}
+	$code .= '</ul>';
+    
+	if ( !$args['echo'] ) return $code;
+	echo $code;
+}
+
+// 获取文章摘要
+function mk_post_excerpt($width_or_words, $more = '...', $words = false) {
+    global $post;
+    
+    if ($post->post_password) {   // 密码保护
+        $excerpt = '本文已加密，请输入密码后访问'; 
+    } else if ($post->post_excerpt) {     // 有摘要，获取摘要
+        $excerpt = $post->post_excerpt;
+    } else {
+        $excerpt = apply_filters('the_content', $post->post_content);
+    }
+    
+    $excerpt = strip_tags($excerpt);
+    $excerpt = str_replace(array("\r\n", "\r", "\n"), '', $excerpt);  
+    
+    if($words) {     
+        $excerpt = wp_trim_words($excerpt, $width_or_words, $more);     // 按字数截取
+    } else {
+        $excerpt = mb_strimwidth($excerpt, 0, $width_or_words, $more);  // 按字符串宽度截断
+    }
+    
+    return $excerpt;
+}
+
+// 返回裁剪图像链接
+function mk_crop_img($img_src, $width = 360, $height = 240) {
+    return get_template_directory_uri().'/inc/timthumb.php?src='.urlencode($img_src).'&w='.$width.'&h='.$height.'&zc=1';
+}
+
+// 从文章内容中获取文章缩略图
+function mk_extract_post_thumbnail() {
+    global $post;
+    if(has_post_thumbnail()) {   // 有文章缩略图
+        $img = get_the_post_thumbnail_url($post, array($width, $height));
+    } else {
+        // 从内容中抓取图片
+        $content = $post->post_content;
+        preg_match_all('/<img.*?(?: |\\t|\\r|\\n)?src=[\'"]?(.+?)[\'"]?(?:(?: |\\t|\\r|\\n)+.*?)?>/sim', $content, $strResult, PREG_PATTERN_ORDER);
+        if(count($strResult[1]) > 0) {
+            return $strResult[1][0];
+        }
+    }
+    return false;
+}
+
+// 从随机图库中获取文章缩略图
+function mk_random_post_thumbnail() {
+    $img_array = glob(get_template_directory().'/static/images/cover/*.{gif,jpg,png,jpeg,webp,bmp}', GLOB_BRACE);
+    $offset    = array_rand($img_array);
+    return str_replace(get_template_directory(), get_template_directory_uri(), $img_array[$offset]);
+}
+
+// 自动缩略图
+function mk_auto_post_thumbnail($width = 360, $height = 240, $always_crop = false, $display = false, $link = true) {
+    global $post;
+    
+    $crop = true;
+    $article_thumbnail_types = mk_theme_option('article_thumbnail_types');
+    switch($article_thumbnail_types) {
+        case 'auto':    // 特色图像 > 文章内图像 > 随机图像
+            $img_src = get_the_post_thumbnail_url($post, array($width, $height));
+            if($img_src) {
+                $crop = false;
+            } else {
+                $img_src = mk_extract_post_thumbnail();
+            }
+            if(!$img_src) {
+                $img_src = mk_random_post_thumbnail();
+            }
+        break;
+        
+        case 'random':  // 随机图像   
+            $img_src = mk_random_post_thumbnail();
+        break;
+        
+        default:        // 特色图像 > 随机图像
+            $img_src = get_the_post_thumbnail_url($post, array($width, $height));
+            if($img_src) {
+                $crop = false;
+            } else {
+                $img_src = mk_random_post_thumbnail();
+            }
+    }
+    
+    if($crop || $always_crop) {
+        $img = mk_crop_img($img_src, $width, $height);
+    } else {
+        $img = $img_src;
+    }
+    
+    // 不要图片标签
+    if(!$display) return $img;
+    // 加上图片标签
+    $img = '<img src="'.$img.'" alt="'.$post->post_title .'">';
+    // 是否加上链接
+    if($link) {
+        echo '<a href="'.get_permalink().'">'.$img.'</a>';
+    } else {
+        echo $img;
+    }
+}
+
+
+// 头像优化
+function mk_avatar($avatar, $id_or_email = '', $size = '40', $default = '', $alt = '') { 
+    $d = MK_THEME_STATIC_URL . '/images/default_avatar.jpg';    // 默认头像
+    if(!$default) $default = $d;
+    $r = get_option('avatar_rating');   // 头像分级
+    
+    if(is_string($id_or_email)) {
+        $email = $id_or_email;
+    } else if ( is_object( $id_or_email ) && isset( $id_or_email->comment_ID ) ) {
+		$email = $id_or_email->comment_author_email;
+	} else {
+	    return $avatar;
+	}
+    
+    $a = mk_theme_option('gravatar_api'). md5(strtolower($email)) . '?s='. $size. '&r=' . $r .'&d=' . urlencode($default);
+    // 如需启用QQ头像，请取消掉以下三行的注释（注：启用后会泄露评论者QQ号！因此主题中没开放此项功能）
+    // if(preg_match('/(\d{5,})@qq\.com/isU', $email, $qqnum) && isset($qqnum[1])) {
+    //     $a = 'https://q4.qlogo.cn/g?b=qq&nk='.$qqnum[1].'&s=100';
+    // }
+    $avatar = '<img alt="'.$alt.'" src="'.$a.'" class="no-error avatar avatar-'.$size.' photo" height="'.$size.'" width="'.$size.'" onerror="onerror=null;src=\''.$d.'\'"/>';
+    return $avatar;
+}
+add_filter('get_avatar', 'mk_avatar', 10, 5);
+
+// 新增主题样式默认头像
+// function mk_new_avatar($avatar_defaults) {  
+//     $myavatar = get_bloginfo('template_url'). '/images/default_avatar.jpg';    // 默认头像
+//     $avatar_defaults[$myavatar] = '匿名头像';  
+//     return $avatar_defaults;  
+// }
+// add_filter( 'avatar_defaults', 'mk_new_avatar' );  
+
+
+// 隐藏作者页
+function mk_author_link() {
+    return home_url('/');
+}
+add_filter('author_link', 'mk_author_link');
+
+
+// 获取评论者等级称号
+$mkCmtCount = array();
+function mk_author_level($comment) {
+    if((trim($comment->comment_type) != '') && (strtolower($comment->comment_type) != 'comment')) {
+        echo '<span class="level level-pingback" title="友好的转发者">'.ucfirst($comment->comment_type).'</span>';
+        return;
+    }
+    
+    $comment_author_email = $comment->comment_author_email;
+    $user_id = $comment->user_id;
+    global $wpdb;
+    
+    // 用户没输入邮箱，无法判断等级
+    if(!$comment_author_email) {
+        echo '<span class="level" title="来自异次元空间的神秘生物">游客</span>';
+        return;
+    }
+    
+    // 管理员
+    if($comment_author_email == get_option('admin_email')) {
+        echo '<span class="level level-admin" title="大师球！">站长</span>';
+        return;
+    }
+    
+    // 获取该用户评论数目
+    global $mkCmtCount;
+    if(isset($mkCmtCount[$comment_author_email])) {
+        $author_count = $mkCmtCount[$comment_author_email];
+    } else {
+        $author_count = count(
+            $wpdb->get_results("SELECT comment_ID as author_count 
+                                FROM $wpdb->comments 
+                                WHERE comment_author_email = '$comment_author_email' ")
+        );
+        $mkCmtCount[$comment_author_email] = $author_count;
+    }
+    
+    // 评论数以及与之对应的等级
+    $level_points = '0,10,20,40,80,160,320,640,1280';
+    $level_name   = 'Lv 1,Lv 2,Lv 3,Lv 4,Lv 5,Lv 6,Lv 7,Lv 8,Vip';
+    
+    $level_points = explode(',', $level_points);
+    $level_name   = explode(',', $level_name);
+    
+    for($i = count($level_points); $i > 0; $i--) {
+        if($author_count >= $level_points[$i-1]) {
+            if($i == count($level_points))  {   // 满级
+                echo ' <span class="level level-'.$i.'" title="评论等级 Lv.'.$i.'，共有 ' .$author_count. ' 条评论">
+                ' . stripslashes($level_name[$i-1]) . '</span>';
+            } else {
+                echo ' <span class="level level-'.$i.'" title="评论等级 Lv.'.$i.'，共有 ' .$author_count. ' 条评论，还差 ' 
+                .(int)($level_points[$i] - $author_count). ' 条评论升级至 Lv.'.($i+1).'">' . stripslashes($level_name[$i-1]) . '</span>';
+            }
+            break;
+        }
+    }
+}	
+
+
+// 时间格式多久以前
+function timeago($ptime) {
+    $ptime = strtotime($ptime);
+    $etime = time() - $ptime;
+    if ($etime < 1) return '刚刚';
+    $interval = array(
+        12 * 30 * 24 * 60 * 60 => '年前 (' . date('Y-m-d', $ptime) . ')',
+        30 * 24 * 60 * 60      => '个月前 (' . date('m-d', $ptime) . ')',
+        7 * 24 * 60 * 60       => '周前 (' . date('m-d', $ptime) . ')',
+        24 * 60 * 60           => '天前',
+        60 * 60                => '小时前',
+        60                     => '分钟前',
+        1                      => '秒前'
+    );
+    foreach ($interval as $secs => $str) {
+        $d = $etime / $secs;
+        if ($d >= 1) {
+            $r = round($d);
+            return $r . $str;
+        }
+    };
+}
+
+
+// 外链 GO 跳转
+function mk_pagego_url() {
+    return home_url() . (BLOG_REWRITE ? '/go/?url=' : '/index.php?mk-custom-page=go&url=');
+}
+function mk_content_nofollow($content) {
+    preg_match_all('/<a(.*)href="([^"]*)"([^>]*)>/isU', $content, $matches);
+    if($matches) {
+        $pagego = mk_pagego_url();
+        for($i = 0; $i < count($matches[0]); $i++) { 
+            if(preg_match('/no-jump-page/i', $matches[3][$i])) continue;    // 排除禁止跳转的项目
+            
+            $href = $matches[2][$i];
+            if(strpos($href, '://') === false)  continue;           // 排除非链接文本
+            if(strpos($href, home_url()) === 0) continue;           // 排除本博客链接
+            if(preg_match('/\.(jpg|jpeg|png|ico|bmp|gif|tiff|webp|zip|rar)/i', $href)) continue;    // 排除静态资源
+            
+            $content = str_replace('href="' . $href . '"', 'href="' . $pagego . $href . '" rel="nofollow" target="_blank"', $content);
+        }
+    }
+    return $content;
+}
+if(mk_theme_option('links_go')) {
+    add_filter('the_content', 'mk_content_nofollow', 999);
+}
+
+
+/**
+ * 自定义重写页面模板，实现无新建页面的特定 url 加载指定模板
+ * 参考资料：
+ * http://www.ashuwp.com/courses/highgrade/318.html
+ * https://zhangzifan.com/wordpress-template-redirect.html
+ */ 
+// 新建重写规则
+function mk_rewrite_rules( $wp_rewrite ){   
+    $new_rules = array(    
+        'go/?$'     => 'index.php?mk-custom-page=go',               // go 跳转页面
+        'search/?$' => 'index.php?mk-custom-page=search',           // 搜索页面
+    ); // 添加翻译规则。如果添加了新的，要 $wp_rewrite->flush_rules(); 才会生效
+    $wp_rewrite->rules = $new_rules + $wp_rewrite->rules; 
+}  
+// 添加查询变量  
+function mk_add_query_vars($public_query_vars){     
+    $public_query_vars[] = 'mk-custom-page';
+    return $public_query_vars;     
+}  
+// 模板载入规则     
+function mk_template_redirect() {   
+    global $wp_query, $wp_rewrite;   
+    
+    if(!isset($wp_query->query_vars['mk-custom-page'])) return;    // 无传入参数
+    
+    // 查询参数
+    $reditect_page =  $wp_query->query_vars['mk-custom-page'];  
+    
+    $template = TEMPLATEPATH.'/template/template-'.$reditect_page.'.php';    
+    
+    if(!file_exists($template)) return;    // 模板文件不存在
+    
+    include($template);   
+    die();   
+}
+add_action('generate_rewrite_rules', 'mk_rewrite_rules');
+add_action('template_redirect', 'mk_template_redirect'); 
+add_action('query_vars', 'mk_add_query_vars');  
+
+
+// 获取搜索页面的地址
+function mk_search_page_url() {
+    $url = get_bloginfo('url'); 
+    if(BLOG_REWRITE) { 
+        return $url . '/search/'; 
+    } else { 
+        return $url . '/index.php?mk-custom-page=search'; 
+    }
+}
+
+
+// 分页代码
+function mk_pagenavi($p = 2) {      // 取当前页前后各 2 页
+    if(is_singular()) return;       // 文章与插页不用
+    
+    global $wp_query, $paged;
+    $max_page = $wp_query->max_num_pages;
+    if($max_page == 1) return;      // 只有一页时不用
+    if(empty($paged))  $paged = 1;
+    
+    echo '<div class="page-navi-bar"><ol class="page-navi">';
+    
+    // 分页前面的内容
+    if($paged > 1)                  mk_pagelink($paged - 1, '上一页', '←');    /* 如果当前页大于1就显示上一页链接 */
+    if($paged > $p + 1)             mk_pagelink(1, '第一页');
+    if($paged > $p + 2)             echo '<li><a class="page-omit">...</a></li>';
+    
+    // 中间页码部分
+    for($i = $paged - $p; $i <= $paged + $p; $i++) { 
+        if($i > 0 && $i <= $max_page) {
+            if($i == $paged) { 
+                echo ("<li class='current'><a class='page-numbers'>{$i}</a></li>"); 
+            } else {
+                mk_pagelink($i);
+            }
+        }
+    }
+    
+    // 分页后面的内容
+    if ($paged < $max_page - $p - 1) echo '<li><a class="page-omit">...</a></li>';
+    if ($paged < $max_page - $p)     mk_pagelink($max_page, '最后一页');
+    if ($paged < $max_page)          mk_pagelink($paged + 1, '下一页', ' →');              /* 如果当前页不是最后一页显示下一页链接 */
+    
+    // 显示页数
+    echo '<li class="current"><a>' . $paged . ' / ' . $max_page . ' </a></li>'; 
+    echo '</ol></div>';
+}
+function mk_pagelink($pagenum, $title = '', $linktext = '') {
+	if(!$title) $title = "第 {$pagenum} 页";
+	if(!$linktext) $linktext = $pagenum;
+	$pagenum_link = esc_html(get_pagenum_link($pagenum));
+	echo "<li><a href='{$pagenum_link}' title='{$title}'>{$linktext}</a></li>";
+}
+
+
+// 输出一个页头banner
+function mk_header_banner($title, $desc) {
+    $bg = MK_THEME_STATIC_URL . '/images/banner.jpg';
+    echo '
+    <header class="banner-bg-header" style="background-image: url(' . $bg . ');">
+        <h1 class="banner-title">' . $title . '</h1>
+        <h4 class="banner-sub-title">' . $desc . '</h4>
+    </header>
+    ';
+}
+
+
+// WordPress发布文章主动推送到百度
+if(mk_theme_option('baidu_push_token', '')) {
+    function mk_baidu_push($post_ID) {
+        $baiduPushToken = mk_theme_option('baidu_push_token', '');
+        $urls = array(get_permalink($post_ID));
+        $api  = 'http://data.zz.baidu.com/urls?site=' . get_option('home') . '&token='.$baiduPushToken;
+        $ch   = curl_init();
+        $options =  array(
+            CURLOPT_URL            => $api,
+            CURLOPT_POST           => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POSTFIELDS     => implode("\n", $urls),
+            CURLOPT_HTTPHEADER     => array('Content-Type: text/plain'),
+        );
+        curl_setopt_array($ch, $options);
+        $result = curl_exec($ch);
+        $result = json_decode($result, true);
+        
+        // 如果推送成功则在文章新增自定义栏目Baidusubmit，值为1
+        if (array_key_exists('success', $result)) {
+            add_post_meta($post_ID, 'Baidusubmit', 1, true);
+        }
+    }
+    add_action('publish_post', 'mk_baidu_push', 0);
+}
+
+
+// SMTP邮箱设置
+if(mk_theme_option('smtp_email_password')) {
+    function mk_mail_smtp($phpmailer) {
+        $phpmailer->From        = mk_theme_option('smtp_email_from');     // 发件人地址
+        $phpmailer->FromName    = mk_theme_option('smtp_email_fromname'); // 发件人昵称
+        $phpmailer->Host        = mk_theme_option('smtp_email_host');     // SMTP服务器地址
+        $phpmailer->Port        = mk_theme_option('smtp_email_port');     // SMTP邮件发送端口
+        if(mk_theme_option('smtp_email_ssl')) :
+        $phpmailer->SMTPSecure  = 'ssl';                                  // 是否 启用 SSL
+        endif;
+        $phpmailer->Username    = mk_theme_option('smtp_email_username'); // 邮箱帐号
+        $phpmailer->Password    = mk_theme_option('smtp_email_password'); // 邮箱密码
+        $phpmailer->IsSMTP();
+        $phpmailer->SMTPAuth    = true;     // 启用SMTPAuth服务
+    }
+    add_action('phpmailer_init', 'mk_mail_smtp');
+}
+
+
+// 评论@回复
+function mk_comment_at($comment_text, $comment = '') {
+    if($comment->comment_parent > 0) {
+        $comment_text = '<a class="comment-at" href="#comment-'.$comment->comment_parent.'">' . 
+                '@'.get_comment_author($comment->comment_parent).
+            '</a>' . $comment_text;
+    }
+    return $comment_text;
+}
+add_filter('comment_text', 'mk_comment_at', 20, 2);
+
+
+/**
+ * WordPress 评论多功能工具条后台处理部分
+ * 编写 By 孟坤博客
+ * 文章地址： http://mkblog.cn/401/
+ */
+function mk_comment_code_escape( $comment ) {
+    $comment = str_replace(array('<', '>'), array('&lt;', '&gt;'), $comment);
+    $goPage  = mk_pagego_url();
+    
+    $comment = preg_replace(
+        array(
+            '/\[b\](.*?)\[\/b\]/is',
+            '/\[i\](.*?)\[\/i\]/is',
+            '/\[u\](.*?)\[\/u\]/is',
+            '/\[del\](.*?)\[\/del\]/is',
+            '/\[pre\](.*?)\[\/pre\]/is',
+            '/\[blockquote\](.*?)\[\/blockquote\]/is',
+            '/\[color=([\w|#]*?)\](.*?)\[\/color\]/is',
+            '/\[url=([^\"\'\]\[]+)\](.*?)\[\/url\]/is',
+            '/\[img\]([^\"\'\]\[]+)\[\/img\]/is'
+            ), 
+            
+        array(
+            '<b>$1</b>',        // 变粗♂
+            '<i>$1</i>',        // 变歪♂
+            '<u>$1</u>',        // 加个下划线
+            '<del>$1</del>',    // 加个删除线
+            '<pre class="prettyprint lang- linenums:1">$1</pre>',        // 这是神秘代码
+            '<blockquote>$1</blockquote>',                               // 鲁迅曾说过。。
+            '<span style="color: $1">$2</span>',                         // 给点颜色看看
+            '<a href="'.$goPage.'$1" target="_blank" class="comment-t-a links" rel="nofollow noopener">$2</a>',            // 会不会跳到羞羞的网站？
+            '<a href="$1" data-fancybox data-no-instant><i class="fa fa-picture-o" aria-hidden="true"></i> 查看图片</a>'   // 无图无真相
+            ), 
+            
+        $comment
+    );
+    
+    return $comment;
+}
+add_filter('comment_text',     'mk_comment_code_escape');  // 在评论显示区替换
+add_filter('comment_text_rss', 'mk_comment_code_escape');  // 在 RSS 中替换
+
+
+// 评论内容尖括号转义
+function mk_comment_escape($comment) {
+    $comment = str_replace(array('<', '>'), array('&lt;', '&gt;'), $comment); // 第一步就去掉尖括号，防止xss
+    return $comment;
+}
+add_filter('preprocess_comment', 'mk_comment_escape');    //评论写入时转义
+
+
+// 启用特色图片
+if(function_exists('add_theme_support')) {
+    add_theme_support('post-thumbnails', array('post', 'page'));
+}
+
+
+// 说说
+function mk_shuoshuo_init() { 
+    $labels = array( 
+        'name'               => '说说',     // 文章类型名称
+        'singular_name'      => '说说',     // 顶部栏>新建
+        'add_new'            => '发表说说', 
+        'add_new_item'       => '发表说说', 
+        'edit_item'          => '编辑说说', 
+        'new_item'           => '新说说', 
+        'view_item'          => '查看说说', 
+        'search_items'       => '搜索说说', 
+        'not_found'          => '暂无说说', 
+        'not_found_in_trash' => '没有已遗弃的说说', 
+        'parent_item_colon'  => '', 
+        'menu_name'          => '说说' 
+    ); 
+    $args = array( 
+        'labels'             => $labels, 
+        'public'             => true, 
+        'publicly_queryable' => true, 
+        'show_ui'            => true, 
+        'show_in_menu'       => true, 
+        'query_var'          => true, 
+        // 'rewrite' => array(
+        //     'slug'=> 'says'
+        // ),
+        'capability_type'    => 'post', 
+        'has_archive'        => true, 
+        'menu_icon'          => 'dashicons-format-status',     // https://developer.wordpress.org/resource/dashicons/
+        'hierarchical'       => false, 
+        'menu_position'      => 8, 
+        'supports'           => array('title', 'editor', 'author', 'comments')
+    ); 
+    register_post_type('shuoshuo', $args); 
+}
+add_action('init', 'mk_shuoshuo_init'); 
+
+
+// 说说伪静态
+function mk_shuoshuo_link($link, $post = 0) {
+    if($post->post_type == 'shuoshuo') {
+        if(BLOG_REWRITE) {
+            return home_url('mood/' . $post->ID . '/');
+        } else {
+            return home_url('index.php?post_type=shuoshuo&p=' . $post->ID);
+        }
+    } else {
+        return $link;
+    }
+}
+function mk_shuoshuo_rewrites_init() {
+    if(BLOG_REWRITE) {
+        add_rewrite_rule(
+            'mood/([0-9]+)?(.*)$',
+            'index.php?post_type=shuoshuo&p=$matches[1]',
+            'top' );
+    }
+}
+add_filter('post_type_link', 'mk_shuoshuo_link', 1, 3);
+add_action('init', 'mk_shuoshuo_rewrites_init');
+
+
+// 加入文章翻页
+function mk_article_navi($content) {
+	$content .= wp_link_pages( array( 
+        'before'           => '<div class="article-navi">', 
+        'after'            => '</div>',            
+        'next_or_number'   => 'next_and_number',            
+        'link_before'      => '<span title="点击翻页">',    
+        'link_after'       => '</span>',            
+        'nextpagelink'     => '→',    
+        'previouspagelink' => '←',
+        'echo'             => false
+    ));
+    
+    return $content;
+}
+add_filter ('the_content', 'mk_article_navi', 9999);
+
+
+// 密码文章表单重写 wp-includes > post-template.php
+function mk_password_form($content) {
+    $output = '<form action="' . esc_url( site_url( 'wp-login.php?action=postpass', 'login_post' ) ) . '" class="post-password-form mk-side-form" method="post">
+        <p>' . __( 'This content is password protected. To view it please enter your password below:' ) . '</p>
+        <p><input name="post_password" type="password" size="20" placeholder="Password" /><button type="submit">' . esc_attr_x( 'Enter', 'post password form' ) . '</button></p>
+        </form>';
+    return $output;
+}
+add_filter ('the_password_form', 'mk_password_form');
+
+
+// 禁用 Gutenberg 编辑器
+if(mk_theme_option('editor_types') != 'gutenberg') {
+    /**
+     * WordPress完美禁止使用Gutenberg块编辑器并恢复到经典编辑器 - 龙笑天下
+     * https://www.ilxtx.com/how-to-disable-gutenberg-block-editor.html
+     */
+    // WP >= 5.0 正式集成Gutenberg古腾堡编辑器
+    if ( version_compare( get_bloginfo('version'), '5.0', '>=' ) ) {
+        add_filter('use_block_editor_for_post', '__return_false'); // 切换回之前的编辑器
+        remove_action( 'wp_enqueue_scripts', 'wp_common_block_scripts_and_styles' ); // 禁止前端加载样式文件
+    }else{
+        // 4.9.8 < WP < 5.0 插件形式集成Gutenberg古腾堡编辑器
+        add_filter('gutenberg_can_edit_post_type', '__return_false');
+    }
+}
+
+
+// 压缩前端代码  https://www.linpx.com/p/pinghsu-subject-integration-code-compression.html
+function mk_compress_html_main($html_source) {
+    $chunks = preg_split('/(<!--<nocompress>-->.*?<!--<\/nocompress>-->|<nocompress>.*?<\/nocompress>|<pre.*?\/pre>|<textarea.*?\/textarea>|<script.*?\/script>)/msi', $html_source, -1, PREG_SPLIT_DELIM_CAPTURE);
+    $compress = '';
+    foreach ($chunks as $c) {
+        if (strtolower(substr($c, 0, 19)) == '<!--<nocompress>-->') {
+            $c = substr($c, 19, strlen($c) - 19 - 20);
+            $compress .= $c;
+            continue;
+        } else if (strtolower(substr($c, 0, 12)) == '<nocompress>') {
+            $c = substr($c, 12, strlen($c) - 12 - 13);
+            $compress .= $c;
+            continue;
+        } else if (strtolower(substr($c, 0, 4)) == '<pre' || strtolower(substr($c, 0, 9)) == '<textarea') {
+            $compress .= $c;
+            continue;
+        } else if (strtolower(substr($c, 0, 7)) == '<script' && strpos($c, '//') != false && (strpos($c, "\r") !== false || strpos($c, "\n") !== false)) {
+            $tmps = preg_split('/(\r|\n)/ms', $c, -1, PREG_SPLIT_NO_EMPTY);
+            $c = '';
+            foreach ($tmps as $tmp) {
+                if (strpos($tmp, '//') !== false) {
+                    if (substr(trim($tmp), 0, 2) == '//') {
+                        continue;
+                    }
+                    $chars = preg_split('//', $tmp, -1, PREG_SPLIT_NO_EMPTY);
+                    $is_quot = $is_apos = false;
+                    foreach ($chars as $key => $char) {
+                        if ($char == '"' && $chars[$key - 1] != '\\' && !$is_apos) {
+                            $is_quot = !$is_quot;
+                        } else if ($char == '\'' && $chars[$key - 1] != '\\' && !$is_quot) {
+                            $is_apos = !$is_apos;
+                        } else if ($char == '/' && $chars[$key + 1] == '/' && !$is_quot && !$is_apos) {
+                            $tmp = substr($tmp, 0, $key);
+                            break;
+                        }
+                    }
+                }
+                $c .= $tmp;
+            }
+        }
+        $c = preg_replace('/[\\n\\r\\t]+/', ' ', $c);
+        $c = preg_replace('/\\s{2,}/', ' ', $c);
+        $c = preg_replace('/>\\s</', '> <', $c);
+        // 去除注释（可选）
+        // $c = preg_replace('/\\/\\*.*?\\*\\//i', '', $c);
+        // $c = preg_replace('/<!--[^!]*-->/', '', $c);
+        $compress .= $c;
+    }
+    return $compress;
+}
+function mk_compress_html() {
+    ob_start('mk_compress_html_main');
+}
+if (!is_admin() && mk_theme_option('compress_html')) {
+    add_action('get_header', 'mk_compress_html');
+}
+
+// 移除多余的换行
+function mk_remove_extra_line($content) 
+{
+    // 移除 <p> 标签换行 
+    $content = preg_replace('/^\s*<\/p>/isU', '', $content);
+    $content = preg_replace('/<p>\s*$/isU',   '', $content);
+    // 移除 <br /> 标签换行
+    $content = preg_replace('/^\s*<br\s*\/?>/isU', '', $content);
+    $content = preg_replace('/<br\s*\/?>\s*$/isU', '', $content);
+    return $content;
+}
+
+// 有些 lnmp 环境可能没启用这个函数
+if(!function_exists('mb_strimwidth')) {
+    function mb_strimwidth( $str, $start, $width, $trimmarker ) {
+        $output = preg_replace('/^(?:[\x00-\x7F]|[\xC0-\xFF][\x80-\xBF]+){0,'.$start.'}((?:[\x00-\x7F]|[\xC0-\xFF][\x80-\xBF]+){0,'.$width.'}).*/s','\1',$str);
+        return $output.$trimmarker;
+    }
+}
+
+/**
+ * 后台登录防护 
+ * https://wordpress.org/plugins/protected-wp-login/
+ */
+$mk_protected_login_key = 'mk_safe_check';
+$mk_protected_login_val = mk_theme_option('protected_login_val');
+
+if($mk_protected_login_val) {
+    /* 增加表单内容 */
+    function mk_protected_wp_login_form() { 
+        global $mk_protected_login_key, $mk_protected_login_val;
+        ?><p>
+            <label for="<?php echo $mk_protected_login_key; ?>">安全校验码</label>
+            <input type="text" name="<?php echo $mk_protected_login_key; ?>" id="<?php echo $mk_protected_login_key; ?>" class="input" value="" size="20" autocapitalize="off">
+        </p><?php
+    }
+    
+    /* 登录验证 */
+    function mk_protected_wp_login_authenticate($user) {
+        // 有账号和密码，说明是在登录
+        if(isset($_POST['log']) && isset($_POST['pwd'])) {
+            global $mk_protected_login_key, $mk_protected_login_val;
+            $err_msg = false;
+            if(!isset($_POST[$mk_protected_login_key])) {
+                $err_msg = '非法的登录请求';
+            } else if(!$_POST[$mk_protected_login_key]) {
+                $err_msg = '请输入安全校验码';
+            } else if($mk_protected_login_val !== $_POST[$mk_protected_login_key]) {
+                $err_msg = '安全校验码有误';
+            }
+            if($err_msg) {
+                defined('MK_NO_FAILED_EMAIL') or define('MK_NO_FAILED_EMAIL', true);
+                return new WP_Error('authentication_failed', '<strong>错误</strong>：' . $err_msg);
+            }
+        }
+        return $user;
+    }
+    
+    /* 载入功能 */
+    function mk_protected_wp_login() {
+        add_action('login_form', 'mk_protected_wp_login_form', 1000);
+        add_action('authenticate', 'mk_protected_wp_login_authenticate', 1000, 1);
+    }
+    add_action('login_init', 'mk_protected_wp_login', 1000);
+}
